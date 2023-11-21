@@ -123,7 +123,7 @@ def read_path_metadata_store_to_irods(os_path, session, run_handle, is_file, err
             print('WARNING: Path %s not registered in iRODS.  Skipping.  Exception: %s' % (irods_path, str(e)))
             error_file.write('WARNING: Path %s not registered in iRODS.  Skipping.  Exception: %s\n' % (irods_path, str(e)))
             
-def recursively_register_and_checksum(os_path, checksum_map, run_handle, error_file, ftp_root_files = False, env_file):
+def recursively_register_and_checksum(os_path, checksum_map, run_handle, error_file, env_file, ftp_root_files = False):
 
     if not os.path.isdir(os_path):
         print('WARNING: Could not register path %s.  Path is missing from source.' % os_path)
@@ -194,7 +194,7 @@ def recursively_register_and_checksum(os_path, checksum_map, run_handle, error_f
                 read_path_metadata_store_to_irods(dirpath, session, run_handle, False, error_file, ftp_root_files)
 
 
-def recursively_replicate_and_trim(os_path, run_handle, ftp_root_files = False, env_file):
+def recursively_replicate_and_trim(os_path, run_handle, env_file, ftp_root_files = False):
 
     with iRODSSession(irods_env_file=env_file) as session:
 
@@ -228,7 +228,7 @@ def do_register(run_handle, operational_mode, env_file):
 
             ftp_root_dirs = glob.glob('%s/%s/ftp_root/*/*/%s' % (phengs_path_prefix, ukhsa_subdir, run_handle))
             for ftp_root_dir in ftp_root_dirs:
-                recursively_register_and_checksum(ftp_root_dir, checksum_map, run_handle, error_file, True)
+                recursively_register_and_checksum(ftp_root_dir, checksum_map, run_handle, error_file, True, env_file)
                 recursively_replicate_and_trim(ftp_root_dir, run_handle, True, env_file)                          # replicate without trim 
 
                 # create the ftp_root_backed_up file
@@ -244,8 +244,8 @@ def do_register(run_handle, operational_mode, env_file):
             os.system("rm %s/restore_from_archive 2>/dev/null" % run_data_dir_filesystem)
             os.system("rm %s/written_to_archive 2>/dev/null" % run_data_dir_filesystem)
 
-            recursively_register_and_checksum(run_data_dir_filesystem, checksum_map, run_handle, error_file)
-            recursively_register_and_checksum(machine_fastqs_dir_filesystem, checksum_map, run_handle, error_file)
+            recursively_register_and_checksum(run_data_dir_filesystem, checksum_map, run_handle, error_file, env_file)
+            recursively_register_and_checksum(machine_fastqs_dir_filesystem, checksum_map, run_handle, error_file, env_file)
 
             # open results_ngssample_dirs and register directories in it
             results_file = "%s/results_ngssample_dirs" % run_data_dir_filesystem
@@ -256,7 +256,7 @@ def do_register(run_handle, operational_mode, env_file):
                         os_path = line.strip()
 
                         # register
-                        recursively_register_and_checksum(os_path, checksum_map, run_handle, error_file)
+                        recursively_register_and_checksum(os_path, checksum_map, run_handle, error_file, env_file)
 
                         # replicate and trim
                         recursively_replicate_and_trim(os_path, run_handle, env_file)

@@ -8,7 +8,12 @@ from irods.exception import CATALOG_ALREADY_HAS_ITEM_BY_THAT_NAME
 from enum import Enum
 import irods.keywords as kw
 
-phengs_path_prefix = '/phengs'
+#phengs_path_prefix = '/phengs' # when run on irodscol01
+phengs_path_prefix = '/hpscol02/tenant1' # when run on smedmaster02
+
+#ukhsa_subdir = 'hpc_storage' # when run on irodscol01
+ukhsa_subdir = 'ngsservice' # when run on smedmaster02
+
 #phengs_path_prefix = '/var/lib/irods/phengs'
 irods_path_prefix = '/PHE/home/ngsservicearchive/archived_files'
 #irods_path_prefix = '/tempZone/home/rods/archived_files'
@@ -105,7 +110,7 @@ def read_path_metadata_store_to_irods(os_path, session, run_handle, is_file, err
                 obj.metadata.add("filesystem::atime", s[3], '')
             except CATALOG_ALREADY_HAS_ITEM_BY_THAT_NAME:
                 pass
-            try: 
+            try:
                 obj.metadata.add("filesystem::mtime", s[4], '')
             except CATALOG_ALREADY_HAS_ITEM_BY_THAT_NAME:
                 pass
@@ -118,7 +123,7 @@ def read_path_metadata_store_to_irods(os_path, session, run_handle, is_file, err
             print('WARNING: Path %s not registered in iRODS.  Skipping.  Exception: %s' % (irods_path, str(e)))
             error_file.write('WARNING: Path %s not registered in iRODS.  Skipping.  Exception: %s\n' % (irods_path, str(e)))
             
-def recursively_register_and_checksum(os_path, checksum_map, run_handle, error_file, ftp_root_files = False):
+def recursively_register_and_checksum(os_path, checksum_map, run_handle, error_file, ftp_root_files = False, env_file):
 
     if not os.path.isdir(os_path):
         print('WARNING: Could not register path %s.  Path is missing from source.' % os_path)
@@ -128,7 +133,6 @@ def recursively_register_and_checksum(os_path, checksum_map, run_handle, error_f
     # make sure directory has g+rw so register and trim will work
     os.system("find %s -type d -print0 | xargs -0 chmod g+rw" % os_path)
         
-    env_file = os.path.expanduser('~/.irods/irods_environment.json')
     with iRODSSession(irods_env_file=env_file) as session:
 
         # create the collection if it does not exist
@@ -190,9 +194,8 @@ def recursively_register_and_checksum(os_path, checksum_map, run_handle, error_f
                 read_path_metadata_store_to_irods(dirpath, session, run_handle, False, error_file, ftp_root_files)
 
 
-def recursively_replicate_and_trim(os_path, run_handle, ftp_root_files = False):
+def recursively_replicate_and_trim(os_path, run_handle, ftp_root_files = False, env_file):
 
-    env_file = os.path.expanduser('~/.irods/irods_environment.json')
     with iRODSSession(irods_env_file=env_file) as session:
 
         for root, dirs, files in os.walk(os_path):
@@ -213,7 +216,7 @@ def recursively_replicate_and_trim(os_path, run_handle, ftp_root_files = False):
 
                 os.system("""irule '{rule_text}' "*irods_path={irods_path}" ruleExecOut""".format(**locals()))
 
-def do_register(run_handle, operational_mode):
+def do_register(run_handle, operational_mode, env_file):
 
     error_file = '%s_errors.log' % run_handle
     error_file = error_file.replace('/', '_')
@@ -223,10 +226,10 @@ def do_register(run_handle, operational_mode):
 
         if operational_mode is OperationalMode.FTP_ONLY or operational_mode is OperationalMode.BOTH:
 
-            ftp_root_dirs = glob.glob('%s/hpc_storage/ftp_root/*/*/%s' % (phengs_path_prefix, run_handle))
+            ftp_root_dirs = glob.glob('%s/%s/ftp_root/*/*/%s' % (phengs_path_prefix, ukhsa_subdir, run_handle))
             for ftp_root_dir in ftp_root_dirs:
                 recursively_register_and_checksum(ftp_root_dir, checksum_map, run_handle, error_file, True)
-                recursively_replicate_and_trim(ftp_root_dir, run_handle, True)                          # replicate without trim 
+                recursively_replicate_and_trim(ftp_root_dir, run_handle, True, env_file)                          # replicate without trim 
 
                 # create the ftp_root_backed_up file
                 os.system("touch %s/ftp_root_backed_up" % ftp_root_dir)
@@ -234,8 +237,8 @@ def do_register(run_handle, operational_mode):
 
         if operational_mode is OperationalMode.LEGACY or operational_mode is OperationalMode.BOTH:
 
-            run_data_dir_filesystem = "%s/hpc_storage/run_data/%s" % (phengs_path_prefix, run_handle)
-            machine_fastqs_dir_filesystem = "%s/hpc_storage/machine_fastqs/%s" % (phengs_path_prefix, run_handle)
+            run_data_dir_filesystem = "%s/%s/run_data/%s" % (phengs_path_prefix, ukhsa_subdir, run_handle)
+            machine_fastqs_dir_filesystem = "%s/%s/machine_fastqs/%s" % (phengs_path_prefix, ukhsa_subdir, run_handle)
 
             # remove the restore_from_archive and written_to_archive files, ignore error if they do not exist
             os.system("rm %s/restore_from_archive 2>/dev/null" % run_data_dir_filesystem)
@@ -256,16 +259,16 @@ def do_register(run_handle, operational_mode):
                         recursively_register_and_checksum(os_path, checksum_map, run_handle, error_file)
 
                         # replicate and trim
-                        recursively_replicate_and_trim(os_path, run_handle)
+                        recursively_replicate_and_trim(os_path, run_handle, env_file)
             except IOError as e:
                 print('WARNING:  No results_ngssample_dirs file found.')
                 error_file.write('WARNING:  No results_ngssample_dirs file found.\n')
 
             # replicate and trim run_data
-            recursively_replicate_and_trim(run_data_dir_filesystem, run_handle)
+            recursively_replicate_and_trim(run_data_dir_filesystem, run_handle, env_file)
 
             # replicate and trim fastqs
-            recursively_replicate_and_trim(machine_fastqs_dir_filesystem, run_handle)
+            recursively_replicate_and_trim(machine_fastqs_dir_filesystem, run_handle, env_file)
 
             # create the written_to_archive file
             os.system("touch %s/written_to_archive" % run_data_dir_filesystem)
@@ -285,7 +288,6 @@ def do_register(run_handle, operational_mode):
         print("-------------------")
         print("Validating files...")
         print("-------------------")
-        env_file = os.path.expanduser('~/.irods/irods_environment.json')
 
         validation_status = True
 
@@ -346,6 +348,13 @@ if __name__ == "__main__":
     parser.add_argument('run_handle', help='the run handle')
     
     args = parser.parse_args()
+    
+    # if IRODS_ENVIRONMENT_FILE var is set use that
+    home_folder = os.getenv('HOME')
+    irods_config_dir="/.irods/"
+    default_environment_file_name="irods_environment.json"
+    default_environment_file_path=home_folder + irods_config_dir + default_environment_file_name
+    env_file = os.environ.get('IRODS_ENVIRONMENT_FILE', default_environment_file_path)
 
     operational_mode = OperationalMode.BOTH
     if args.option == 'ftp_only':
@@ -356,4 +365,4 @@ if __name__ == "__main__":
     #print(args.option)
     #print(operational_mode)
 
-    do_register(args.run_handle, operational_mode)
+    do_register(args.run_handle, operational_mode, env_file)
